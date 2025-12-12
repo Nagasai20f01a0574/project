@@ -53,11 +53,15 @@ const observer = new IntersectionObserver(entries => {
 document.querySelectorAll('.service-card, .testimonial-card, .pricing-card')
   .forEach(card => observer.observe(card));
 
+
+  
 // =======================
-// 🎬 PROJECT CARD ANIMATIONS
+// 🎬 PROJECT CARD ANIMATIONS (your existing function kept)
 // =======================
 function animateProjects() {
   const projectCards = document.querySelectorAll('.project-card');
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   const observer = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -69,13 +73,118 @@ function animateProjects() {
   }, { threshold: 0.1 });
 
   projectCards.forEach(card => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px)';
-    card.style.transition = 'all 0.6s ease';
-    observer.observe(card);
+    if (prefersReduced) {
+      card.style.opacity = '1';
+      card.style.transform = 'none';
+    } else {
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(20px)';
+      card.style.transition = 'all 0.6s ease';
+      observer.observe(card);
+    }
   });
 }
 document.addEventListener('DOMContentLoaded', animateProjects);
+
+
+// ==============
+// Inline card details toggler (NEW)
+// ==============
+(function() {
+  // State for currently open card
+  let activeCard = null;
+
+  // Open the card: add .open, set aria attributes, focus button
+  function openCard(card) {
+    if (!card) return;
+    closeActiveCard();
+    card.classList.add('open');
+    card.setAttribute('aria-expanded', 'true');
+    const details = card.querySelector('.card-details');
+    if (details) details.setAttribute('aria-hidden', 'false');
+    activeCard = card;
+    // focus enroll button for accessibility if present
+    const btn = card.querySelector('.btn-enroll');
+    if (btn) btn.focus({ preventScroll: true });
+  }
+
+  // Close current active card if any
+  function closeActiveCard() {
+    if (!activeCard) return;
+    activeCard.classList.remove('open');
+    activeCard.setAttribute('aria-expanded', 'false');
+    const details = activeCard.querySelector('.card-details');
+    if (details) details.setAttribute('aria-hidden', 'true');
+    activeCard = null;
+  }
+
+  // Toggle logic: if clicked card is active close it, otherwise open it
+  function toggleCard(card) {
+    if (!card) return;
+    if (card === activeCard) closeActiveCard();
+    else openCard(card);
+  }
+
+  // Initialize behavior after DOM is ready
+  document.addEventListener('DOMContentLoaded', () => {
+    const cards = document.querySelectorAll('.project-card');
+
+    // Ensure each card has the proper accessibility attributes
+    cards.forEach((card, idx) => {
+      if (!card.hasAttribute('data-key')) card.setAttribute('data-key', `p${idx+1}`);
+      if (!card.hasAttribute('role')) card.setAttribute('role', 'button');
+      if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '0');
+      if (!card.hasAttribute('aria-expanded')) card.setAttribute('aria-expanded', 'false');
+
+      // Make sure the details element exists; if not, create a basic fallback to avoid errors
+      if (!card.querySelector('.card-details')) {
+        const fallback = document.createElement('div');
+        fallback.className = 'card-details';
+        fallback.innerHTML = `<div class="card-details-inner"><p>No details provided.</p></div>`;
+        fallback.setAttribute('aria-hidden', 'true');
+        card.appendChild(fallback);
+      }
+    });
+
+    // Click listener on each card
+    cards.forEach(card => {
+      card.addEventListener('click', (e) => {
+        // If click happened inside the details inner (buttons, links), don't toggle the card
+        if (e.target.closest('.card-details-inner')) return;
+        toggleCard(card);
+      });
+
+      // Keyboard support: Enter / Space to toggle, Escape to close
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleCard(card);
+        } else if (e.key === 'Escape') {
+          closeActiveCard();
+        }
+      });
+    });
+
+    // Click outside closes any open card
+    document.addEventListener('click', (e) => {
+      // If click inside a card or inside a details element, do nothing
+      if (e.target.closest('.project-card') || e.target.closest('.card-details')) return;
+      if (activeCard) closeActiveCard();
+    });
+
+    // Global Escape closes
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && activeCard) closeActiveCard();
+    });
+
+    // Optional: close card when window is resized (prevents layout issues)
+    window.addEventListener('resize', () => {
+      // if user prefers reduced motion or layout change, close active card to avoid stuck states
+      if (activeCard) closeActiveCard();
+    });
+  });
+})();
+
 
 // =======================
 // ♾️ TESTIMONIAL SCROLL
@@ -170,6 +279,8 @@ document.addEventListener('DOMContentLoaded', animateProjects);
   updateNav();
 })();
 
+
+
 // =======================
 // 📩 CONTACT POPUP (Iframe-based)
 // =======================
@@ -193,75 +304,134 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // =======================
-// 🧾 CONTACT FORM SUBMISSION (Google Apps Script)
+// 🧾 CONTACT FORM SUBMISSION (client-side)
 // =======================
-const modal = document.getElementById('contactModal');
-const contactBtns = document.querySelectorAll('.contact-btn');
-const closeModal = document.querySelector('.close-modal');
-const closeSuccess = document.getElementById('closeSuccess');
-const contactForm = document.getElementById('contactForm');
-const contactFormContainer = document.getElementById('contactFormContainer');
-const successMessage = document.getElementById('successMessage');
+document.addEventListener('DOMContentLoaded', function () {
+  // Elements
+  const modal = document.getElementById('contactModal');
+  const contactBtns = document.querySelectorAll('.contact-btn');
+  const closeModal = document.querySelector('.close-modal');
+  const closeSuccess = document.getElementById('closeSuccess');
+  const contactForm = document.getElementById('contactForm');
+  const contactFormContainer = document.getElementById('contactFormContainer');
+  const successMessage = document.getElementById('successMessage');
+  const spinnerOverlay = document.getElementById('spinnerOverlay');
+  const sendLottie = document.getElementById('sendLottie'); // lottie player
 
-// Open modal
-if (contactBtns && modal) {
-  contactBtns.forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.preventDefault();
-      modal.style.display = 'flex';
-      contactFormContainer.style.display = 'block';
-      successMessage.style.display = 'none';
+  // Defensive guards
+  const submitBtn = contactForm ? contactForm.querySelector('button[type="submit"]') : null;
+
+  // Open modal when any .contact-btn clicked
+  if (contactBtns && modal) {
+    contactBtns.forEach(btn => {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        modal.style.display = 'flex';
+        if (contactFormContainer) contactFormContainer.style.display = 'block';
+        if (successMessage) successMessage.style.display = 'none';
+      });
     });
-  });
-}
+  }
 
-// Close modal
-if (closeModal) closeModal.addEventListener('click', () => modal.style.display = 'none');
-if (closeSuccess) closeSuccess.addEventListener('click', () => modal.style.display = 'none');
-window.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  // Close handlers
+  if (closeModal) closeModal.addEventListener('click', () => { modal.style.display = 'none'; });
+  if (closeSuccess) closeSuccess.addEventListener('click', () => { modal.style.display = 'none'; });
+  window.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
 
-// Success function
-function showSuccess() {
-  contactFormContainer.style.display = 'none';
-  successMessage.style.display = 'block';
-  contactForm.reset();
-}
+  function showSuccess() {
+    // stop lottie if playing
+    if (sendLottie && typeof sendLottie.stop === 'function') {
+      try { sendLottie.stop(); } catch (err) {}
+    }
 
-// Handle form submission
-if (contactForm) {
-  contactForm.addEventListener('submit', async e => {
+    // fade-out overlay
+    if (spinnerOverlay) {
+      spinnerOverlay.classList.add("hide");
+      setTimeout(() => {
+        spinnerOverlay.style.display = "none";
+        spinnerOverlay.classList.remove("hide");
+      }, 300);
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '';
+      submitBtn.style.cursor = '';
+    }
+
+    if (contactFormContainer) {
+      contactFormContainer.classList.add("form-hide");
+      setTimeout(() => {
+        contactFormContainer.style.display = 'none';
+        contactFormContainer.classList.remove("form-hide");
+      }, 250);
+    }
+
+    setTimeout(() => {
+      if (successMessage) {
+        successMessage.style.display = 'block';
+        successMessage.classList.add("show-success");
+      }
+    }, 260);
+
+    if (contactForm) contactForm.reset();
+  }
+
+  if (!contactForm) return;
+
+  contactForm.addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const payload = {
-      name: document.getElementById('name').value.trim(),
-      email: document.getElementById('email').value.trim(),
-      phone: document.getElementById('phone').value.trim(),
-      service: document.getElementById('service').value,
-      message: document.getElementById('message').value.trim()
+      name: (document.getElementById('name')?.value || '').trim(),
+      email: (document.getElementById('email')?.value || '').trim(),
+      phone: (document.getElementById('phone')?.value || '').trim(),
+      service: (document.getElementById('service')?.value || '').trim(),
+      message: (document.getElementById('message')?.value || '').trim()
     };
 
     try {
-      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyrknD-0nXM-n0jAvJmzsKIJrmVPD1FFELsoIxCRWp7DJWI7W5J65v8ItSlUzrboyH-vA/exec";
+      // show spinner and play lottie
+      if (spinnerOverlay) {
+        spinnerOverlay.style.display = 'flex';
+        spinnerOverlay.classList.remove('hide');
+      }
+      if (sendLottie && typeof sendLottie.play === 'function') {
+        try { sendLottie.play(); } catch (err) {}
+      }
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.7';
+        submitBtn.style.cursor = 'not-allowed';
+      }
 
+      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyrknD-0nXM-n0jAvJmzsKIJrmVPD1FFELsoIxCRWp7DJWI7W5J65v8ItSlUzrboyH-vA/exec";
       const res = await fetch(WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify(payload) // no explicit content-type
+        method: 'POST',
+        body: JSON.stringify(payload)
       });
 
       const text = await res.text();
       let result;
-      try { result = JSON.parse(text); } 
-      catch { result = { status: "error", message: text }; }
+      try { result = JSON.parse(text); } catch (err) { result = { status: 'error', message: text }; }
 
-      if (result.status === "success") {
+      if (result && result.status === 'success') {
         showSuccess();
       } else {
-        alert("Server error: " + (result.message || "Please try again"));
+        // stop lottie + hide spinner
+        if (sendLottie && typeof sendLottie.stop === 'function') try{ sendLottie.stop(); }catch(e){}
+        if (spinnerOverlay) spinnerOverlay.style.display = 'none';
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = ''; submitBtn.style.cursor = ''; }
+        alert("Server error: " + (result?.message || "Please try again"));
       }
+
     } catch (err) {
-      console.error("Submit error:", err);
+      console.error('Submit error:', err);
+      if (sendLottie && typeof sendLottie.stop === 'function') try{ sendLottie.stop(); }catch(e){}
+      if (spinnerOverlay) spinnerOverlay.style.display = 'none';
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = ''; submitBtn.style.cursor = ''; }
       alert("Network error — check your Web App URL and deployment settings.");
     }
   });
-}
 
+});
